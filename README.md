@@ -311,18 +311,30 @@ This script will:
 
 ## Automatic deployment with GitHub Actions
 
-Once the AWS infrastructure is deployed, you can set up automatic deployment of the React web app to S3 and CloudFront using GitHub Actions.
+Once the AWS infrastructure is deployed, you can set up automatic deployment of the Server and Web apps using GitHub Actions.
 
 At the GitHub repository, go to Settings → Environments and create an environment named "dev" or "prod".
 On that page, click the environment and add the following environment variables (not secrets):
 
-| Environment variable               | Value                                                 |
-| ---------------------------------- | ----------------------------------------------------- |
-| `AWS_REGION`                       | `us-east-1`                                           |
-| `AWS_GITHUB_ACTIONS_OIDC_ROLE_ARN` | `terraform output web_github_actions_oidc_role_arn`   |
-| `WEB_S3_BUCKET`                    | `terraform output website_s3_bucket_name`             |
-| `WEB_CLOUDFRONT_DISTRIBUTION_ID`   | `terraform output website_cloudfront_distribution_id` |
-| `VITE_API_BASE_URL`                | `https://api.recipemanager.link/api`                  |
+| Environment variable | Value       |
+| -------------------- | ----------- |
+| `AWS_REGION`         | `us-east-1` |
+
+For the **Web (Frontend)** deployment, additionally add:
+
+| Environment variable             | Value                                                 |
+| -------------------------------- | ----------------------------------------------------- |
+| `AWS_OIDC_ROLE_ARN_WEB`          | `terraform output web_github_actions_oidc_role_arn`   |
+| `WEB_S3_BUCKET`                  | `terraform output website_s3_bucket_name`             |
+| `WEB_CLOUDFRONT_DISTRIBUTION_ID` | `terraform output website_cloudfront_distribution_id` |
+| `VITE_API_BASE_URL`              | `https://api.recipemanager.link/api`                  |
+
+For the **Server (API)** deployment, additionally add:
+
+| Environment variable       | Value                                                  |
+| -------------------------- | ------------------------------------------------------ |
+| `AWS_OIDC_ROLE_ARN_SERVER` | `terraform output server_github_actions_oidc_role_arn` |
+| `ECR_REPOSITORY_URL`       | `terraform output server_ecr_repository_url`           |
 
 ## Manually deploy the React web app to AWS S3 and CloudFront
 

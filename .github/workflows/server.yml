@@ -6,14 +6,12 @@ on:
       - main
     paths:
       - server/**
-      - kubernetes/server/base/**
       - .github/workflows/server.yml
   pull_request:
     branches:
       - main
     paths:
       - server/**
-      - kubernetes/server/base/**
       - .github/workflows/server.yml
     types:
       - opened
@@ -76,8 +74,8 @@ jobs:
       - name: Run tests
         run: npm test
 
-  deploy_dev:
-    name: Deploy to Dev
+  build_and_push_dev:
+    name: Build & Push to ECR (Dev)
     needs: [eslint, typecheck, tests]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-24.04
@@ -85,35 +83,47 @@ jobs:
       name: dev
     permissions:
       id-token: write
-      contents: write # Needed to commit kustomization.yaml back to main
+      contents: read
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+
+      - name: Set Short SHA
+        id: vars
+        run: echo "image_tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ vars.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN_SERVER }}
-          role-session-name: 'GitHubActions-server-deploy-dev'
+          role-session-name: 'GitHubActions-server-ecr-push-dev'
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Set Short SHA
-        id: vars
-        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-
-      - name: Build, tag, and push Docker image to ECR
+      - name: Build and push Docker image
         env:
           ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
         run: |
-          docker build --platform linux/amd64 -t recipe-manager-server:${{ env.SHORT_SHA }} .
-          docker tag recipe-manager-server:${{ env.SHORT_SHA }} ${ECR_REPOSITORY_URL}:${{ env.SHORT_SHA }}
-          docker push ${ECR_REPOSITORY_URL}:${{ env.SHORT_SHA }}
+          docker build --platform linux/amd64 -t recipe-manager-server:${{ steps.vars.outputs.image_tag }} .
+          docker tag recipe-manager-server:${{ steps.vars.outputs.image_tag }} $ECR_REPOSITORY_URL:${{ steps.vars.outputs.image_tag }}
+          docker push $ECR_REPOSITORY_URL:${{ steps.vars.outputs.image_tag }}
+
+  update_dev:
+    name: GitOps Kustomize (Dev)
+    needs: [build_and_push_dev]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Kustomize
         uses: imranismail/setup-kustomize@v2
@@ -123,54 +133,66 @@ jobs:
       - name: Update Kubernetes manifests
         run: |
           cd ../kubernetes/server/overlays/dev
-          kustomize edit set image recipe-manager-api-server=${{ vars.ECR_REPOSITORY_URL }}:${{ env.SHORT_SHA }}
+          kustomize edit set image recipe-manager-api-server=${{ vars.ECR_REPOSITORY_URL }}:${{ needs.build_and_push_dev.outputs.image_tag }}
 
       - name: Commit and push GitOps changes
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add ../kubernetes/server/overlays/dev/kustomization.yaml
-          git commit -m "chore(gitops): deploy server dev (${{ env.SHORT_SHA }}) [skip ci]"
-          git push
+          git commit -m "chore(gitops): update dev server image tag to ${{ needs.build_and_push_dev.outputs.image_tag }} [skip ci]"
+          git push origin main
 
-  deploy_prod:
-    name: Deploy to Prod
-    needs: [deploy_dev]
+  build_and_push_prod:
+    name: Build & Push to ECR (Prod)
+    needs: [eslint, typecheck, tests, update_dev]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-24.04
     environment:
       name: prod
     permissions:
       id-token: write
-      contents: write # Needed to commit kustomization.yaml back to main
+      contents: read
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          ref: main # Check out the main branch again to get the latest commit produced by deploy_dev
+
+      - name: Set Short SHA
+        id: vars
+        run: echo "image_tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ vars.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN_SERVER }}
-          role-session-name: 'GitHubActions-server-deploy-prod'
+          role-session-name: 'GitHubActions-server-ecr-push-prod'
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Set Short SHA
-        id: vars
-        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-
-      - name: Build, tag, and push Docker image to ECR
+      - name: Build and push Docker image
         env:
           ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
         run: |
-          docker build --platform linux/amd64 -t recipe-manager-server:${{ env.SHORT_SHA }} .
-          docker tag recipe-manager-server:${{ env.SHORT_SHA }} ${ECR_REPOSITORY_URL}:${{ env.SHORT_SHA }}
-          docker push ${ECR_REPOSITORY_URL}:${{ env.SHORT_SHA }}
+          docker build --platform linux/amd64 -t recipe-manager-server:${{ steps.vars.outputs.image_tag }} .
+          docker tag recipe-manager-server:${{ steps.vars.outputs.image_tag }} $ECR_REPOSITORY_URL:${{ steps.vars.outputs.image_tag }}
+          docker push $ECR_REPOSITORY_URL:${{ steps.vars.outputs.image_tag }}
+
+  update_prod:
+    name: GitOps Kustomize (Prod)
+    needs: [build_and_push_prod]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Kustomize
         uses: imranismail/setup-kustomize@v2
@@ -180,14 +202,13 @@ jobs:
       - name: Update Kubernetes manifests
         run: |
           cd ../kubernetes/server/overlays/prod
-          kustomize edit set image recipe-manager-api-server=${{ vars.ECR_REPOSITORY_URL }}:${{ env.SHORT_SHA }}
+          kustomize edit set image recipe-manager-api-server=${{ vars.ECR_REPOSITORY_URL }}:${{ needs.build_and_push_prod.outputs.image_tag }}
 
       - name: Commit and push GitOps changes
         run: |
-          # Make sure to pull first in case there were other commits to main while waiting for approval
-          git pull origin main
+          git pull --rebase origin main
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add ../kubernetes/server/overlays/prod/kustomization.yaml
-          git commit -m "chore(gitops): deploy server prod (${{ env.SHORT_SHA }}) [skip ci]"
-          git push
+          git commit -m "chore(gitops): update prod server image tag to ${{ needs.build_and_push_prod.outputs.image_tag }} [skip ci]"
+          git push origin main
