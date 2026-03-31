@@ -1,0 +1,15 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  amiSelectorTerms:
+    - alias: al2023@latest
+  role: default-karpenter-role
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: default-cluster-name
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: default-cluster-name
+        kubernetes.io/cluster/default-cluster-name: 'owned'

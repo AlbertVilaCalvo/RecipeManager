@@ -254,7 +254,6 @@ This script will:
 - Create VPC, EKS cluster, RDS database, ECR repository, Pod Identity, ACM certificate for the API endpoint and application secrets (JWT, email credentials)
 - Install Load Balancer Controller, ExternalDNS, External Secrets Operator, Karpenter and Argo CD using Helm
 - Create the Argo CD root Application (App of Apps)
-- Create Karpenter NodePool and EC2NodeClass
 - Display next steps
 
 This process takes approximately 20-30 minutes.

@@ -118,7 +118,7 @@ fi
 log_info "Hosted Zone ID: ${ZONE_ID}"
 
 # Step 1: Delete Kubernetes resources (required to remove ALB created by Ingress)
-log_step "Step 1/7 : Deleting Kubernetes resources..."
+log_step "Step 1/6 : Deleting Kubernetes resources..."
 
 # Configure kubectl, delete Argo CD-managed resources and wait for the Load Balancer Controller
 # to clean up AWS resources (ALB, Target Groups, Security Groups).
@@ -210,12 +210,8 @@ else
 fi
 
 # Step 2: Delete Argo CD root Application (App of Apps)
-log_step "Step 2/7 : Deleting Argo CD root Application (App of Apps)..."
+log_step "Step 2/6 : Deleting Argo CD root Application (App of Apps)..."
 terraform destroy -target=module.argocd_apps -auto-approve
-
-# Step 3: Delete Karpenter NodePool
-log_step "Step 3/7 : Deleting Karpenter NodePool and EC2NodeClass..."
-terraform destroy -target=module.karpenter_nodepool -auto-approve
 
 # Wait for Karpenter nodes to be terminated before deleting the Karpenter controller in Step 3.
 # Deleting the controller while EC2 instances are still running could leave them orphaned
@@ -250,7 +246,7 @@ while true; do
 done
 
 # Step 4: Delete Kubernetes controllers (Load Balancer Controller, ExternalDNS, External Secrets Operator, Karpenter) and Argo CD Helm charts
-log_step "Step 4/7 : Deleting Kubernetes controllers (Load Balancer Controller, ExternalDNS, External Secrets Operator, Karpenter) and Argo CD Helm charts..."
+log_step "Step 3/6 : Deleting Kubernetes controllers (Load Balancer Controller, ExternalDNS, External Secrets Operator, Karpenter) and Argo CD Helm charts..."
 
 # Download Helm charts locally to avoid network timeouts during Terraform destroy
 download_helm_charts
@@ -266,7 +262,7 @@ retry_with_backoff 3 "Delete Kubernetes controllers and Argo CD" \
   -auto-approve
 
 # Step 5: Delete all remaining resources
-log_step "Step 5/7 : Deleting all remaining resources (VPC, EKS, RDS, ECR, Pod Identity, ACM Certificate, App Secrets, GitHub Actions OIDC role)..."
+log_step "Step 4/6 : Deleting all remaining resources (VPC, EKS, RDS, ECR, Pod Identity, ACM Certificate, App Secrets, GitHub Actions OIDC role)..."
 log_info "This may take 15-20 minutes..."
 
 # The VPC CNI plugin (aws-node) leaves behind ENIs in Karpenter node subnets that block
@@ -339,7 +335,7 @@ done
 log_info "Remaining resources (VPC, EKS, RDS, ECR...) deleted successfully"
 
 # Step 6: Cleanup local Docker images
-log_step "Step 6/7 : Cleaning up local Docker images..."
+log_step "Step 5/6 : Cleaning up local Docker images..."
 
 # Check if Docker is available
 if command -v docker &>/dev/null && docker info >/dev/null 2>&1; then
@@ -368,7 +364,7 @@ else
 fi
 
 # Step 7: Cleanup ~/.kube/config
-log_step "Step 7/7 : Removing kubeconfig context, cluster and user entries..."
+log_step "Step 6/6 : Removing kubeconfig context, cluster and user entries..."
 CLUSTER_ARN="arn:aws:eks:${AWS_REGION}:${AWS_ACCOUNT_ID}:cluster/${CLUSTER_NAME}"
 kubectl config delete-context "${CLUSTER_ARN}" || true
 kubectl config delete-cluster "${CLUSTER_ARN}" || true

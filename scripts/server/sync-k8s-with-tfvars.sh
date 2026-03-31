@@ -82,11 +82,17 @@ sed -i.bak \
   -e "s|targetRevision: .*|targetRevision: ${GIT_REVISION}|g" \
   "${ARGOCD_APPS_DIR}/server-app.yaml"
 
+sed -i.bak \
+  -e "s|repoURL: .*|repoURL: ${GIT_REPO_URL}|g" \
+  -e "s|targetRevision: .*|targetRevision: ${GIT_REVISION}|g" \
+  "${ARGOCD_APPS_DIR}/karpenter-app.yaml"
+
 # Cleanup sed backups
 rm -f "${OVERLAY_DIR}/ingress_patch.yaml.bak" \
   "${OVERLAY_DIR}/configmap_patch.yaml.bak" \
   "${BASE_DIR}/configmap.yaml.bak" \
   "${BASE_DIR}/secret-store.yaml.bak" \
-  "${ARGOCD_APPS_DIR}"/server-app.yaml.bak
+  "${ARGOCD_APPS_DIR}"/server-app.yaml.bak \
+  "${ARGOCD_APPS_DIR}"/karpenter-app.yaml.bak
 
 log_info "Manifest synchronization complete."

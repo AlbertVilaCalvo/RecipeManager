@@ -65,14 +65,14 @@ echo ""
 cd "${TERRAFORM_DIR}" || exit 1
 
 # Step 1: Initialize Terraform
-log_step "Step 1/6: Initializing Terraform..."
+log_step "Step 1/5: Initializing Terraform..."
 validate_file_exists "${TERRAFORM_DIR}/backend.config" "backend.config not found at ${TERRAFORM_DIR}/backend.config. Please run scripts/bootstrap/create-state-bucket.sh ${ENVIRONMENT} first to create the state bucket and backend.config file."
 
 log_info "Using backend config from backend.config"
 terraform init -backend-config="backend.config"
 
 # Step 2: Create core infrastructure (VPC, EKS, RDS, ECR, Pod Identity, ACM Certificate, App Secrets)
-log_step "Step 2/6: Creating core infrastructure (VPC, EKS, RDS, ECR, Pod Identity, ACM Certificate, App Secrets, GitHub Actions OIDC role)..."
+log_step "Step 2/5: Creating core infrastructure (VPC, EKS, RDS, ECR, Pod Identity, ACM Certificate, App Secrets, GitHub Actions OIDC role)..."
 log_info "This may take 15-20 minutes..."
 terraform apply \
   -target=module.vpc \
@@ -86,7 +86,7 @@ terraform apply \
   -auto-approve
 
 # Step 3: Install Kubernetes controllers using Helm
-log_step "Step 3/6: Installing Load Balancer Controller, ExternalDNS, External Secrets Operator, Karpenter and Argo CD Helm charts..."
+log_step "Step 3/5: Installing Load Balancer Controller, ExternalDNS, External Secrets Operator, Karpenter and Argo CD Helm charts..."
 log_info "This may take 5-10 minutes..."
 
 # Download Helm charts locally to avoid network timeouts during Terraform apply
@@ -102,20 +102,13 @@ retry_with_backoff 3 "Install Kubernetes controllers and Argo CD using Helm" \
   -target=module.argocd \
   -auto-approve
 
-# Step 4: Create Karpenter NodePool and EC2NodeClass
-# The Karpenter CRDs need to be installed before creating the NodePool and EC2NodeClass
-log_step "Step 4/6: Creating Karpenter NodePool and EC2NodeClass..."
-terraform apply -target=module.karpenter_nodepool -auto-approve
-
-# Step 5: Create Argo CD root Application (App of Apps)
+# Step 4: Create Argo CD root Application (App of Apps)
 # The Argo CD CRDs need to be installed before creating the root Application.
-# Creating the root application is done after creating the Karpenter NodePool, this
-# way Karpenter nodes are available for the workloads that Argo CD will deploy.
-log_step "Step 5/6: Creating Argo CD root Application (App of Apps)..."
+log_step "Step 4/5: Creating Argo CD root Application (App of Apps)..."
 terraform apply -target=module.argocd_apps -auto-approve
 
-# Step 6: Update kubectl config
-log_step "Step 6/6: Updating kubectl configuration..."
+# Step 5: Update kubectl config
+log_step "Step 5/5: Updating kubectl configuration..."
 AWS_REGION=$(get_tfvars_value "aws_region")
 CLUSTER_NAME=$(get_terraform_output "cluster_name")
 NAMESPACE="recipe-manager"

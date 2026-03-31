@@ -297,35 +297,6 @@ variable "git_revision" {
 
 # Karpenter NodePool Configuration
 
-variable "karpenter_instance_types" {
-  description = "List of EC2 instance types for the Karpenter NodePool (e.g., t3.small, t3.medium, t3.large, t3.xlarge)"
-  type        = list(string)
-}
-
-variable "karpenter_capacity_types" {
-  description = "List of capacity types for Karpenter (on-demand, spot)"
-  type        = list(string)
-  validation {
-    condition     = alltrue([for ct in var.karpenter_capacity_types : contains(["on-demand", "spot"], ct)])
-    error_message = "karpenter_capacity_types must only contain on-demand or spot"
-  }
-}
-
-variable "karpenter_cpu_limit" {
-  description = "Maximum CPU cores that can be provisioned by Karpenter (e.g., 100)"
-  type        = number
-}
-
-variable "karpenter_memory_limit" {
-  description = "Maximum memory that can be provisioned by Karpenter (e.g., 100Gi)"
-  type        = string
-}
-
-variable "karpenter_consolidate_after" {
-  description = "Time after which Karpenter consolidates underutilized nodes (e.g., 1m, 10m)"
-  type        = string
-}
-
 # Email Configuration
 
 variable "email_user" {

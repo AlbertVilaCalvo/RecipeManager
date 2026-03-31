@@ -61,15 +61,6 @@ karpenter_chart_version = "1.8.3"
 
 # Argo CD
 argocd_chart_version = "9.4.15"
-
-# Karpenter NodePool
-# Order does not matter: Karpenter automatically provisions the cheapest available instance
-karpenter_instance_types    = ["t3a.small", "t3.small", "t3a.medium", "t3.medium", "t3a.large", "t3.large", "t3a.xlarge", "t3.xlarge"]
-karpenter_capacity_types    = ["on-demand"]
-karpenter_cpu_limit         = 100
-karpenter_memory_limit      = "100Gi"
-karpenter_consolidate_after = "5m" # Longer wait time means less frequent node consolidation, which reduces pod evictions and restarts
-
 # Email Configuration
 email_user     = "noreply@recipeapp.link"
 email_password = "placeholder"
