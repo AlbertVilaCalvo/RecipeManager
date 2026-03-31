@@ -264,13 +264,6 @@ variable "external_dns_chart_version" {
   type        = string
 }
 
-# External Secrets Operator
-
-variable "external_secrets_chart_version" {
-  description = "Version of the External Secrets Operator Helm chart"
-  type        = string
-}
-
 # Karpenter Controller
 
 variable "karpenter_chart_version" {

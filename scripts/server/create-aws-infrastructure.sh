@@ -72,7 +72,7 @@ log_info "Using backend config from backend.config"
 terraform init -backend-config="backend.config"
 
 # Step 2: Create core infrastructure (VPC, EKS, RDS, ECR, Pod Identity, ACM Certificate, App Secrets)
-log_step "Step 2/5: Creating core infrastructure (VPC, EKS, RDS, ECR, Pod Identity, ACM Certificate, App Secrets, GitHub Actions OIDC role)..."
+log_step "Step 2/5: Creating core infrastructure (VPC, EKS, RDS, ECR, Pod Identity, ACM Certificate, App Secrets, External Secrets IAM role, GitHub Actions OIDC role)..."
 log_info "This may take 15-20 minutes..."
 terraform apply \
   -target=module.vpc \
@@ -82,11 +82,12 @@ terraform apply \
   -target=module.pod_identity \
   -target=module.acm_certificates \
   -target=module.app_secrets \
+  -target=module.external_secrets \
   -target=module.github_actions_oidc_role_server \
   -auto-approve
 
 # Step 3: Install Kubernetes controllers using Helm
-log_step "Step 3/5: Installing Load Balancer Controller, ExternalDNS, External Secrets Operator, Karpenter and Argo CD Helm charts..."
+log_step "Step 3/5: Installing Load Balancer Controller, ExternalDNS, Karpenter and Argo CD Helm charts..."
 log_info "This may take 5-10 minutes..."
 
 # Download Helm charts locally to avoid network timeouts during Terraform apply
@@ -97,17 +98,16 @@ retry_with_backoff 3 "Install Kubernetes controllers and Argo CD using Helm" \
   terraform apply \
   -target=module.lb_controller \
   -target=module.external_dns \
-  -target=module.external_secrets \
   -target=module.karpenter_controller \
   -target=module.argocd \
   -auto-approve
 
 # Step 4: Create Argo CD root Application (App of Apps)
 # The Argo CD CRDs need to be installed before creating the root Application.
-# The root Application deploys the Karpenter NodePool + EC2NodeClass (which
-# provisions worker nodes) and the server app.
+# The root Application deploys External Secrets Operator, the Karpenter NodePool + EC2NodeClass
+# (which provisions worker nodes) and the server app.
 log_step "Step 4/5: Creating Argo CD root Application (App of Apps)..."
-log_info "This deploys the Karpenter NodePool + EC2NodeClass (which provisions worker nodes) and the server app"
+log_info "This deploys External Secrets Operator, the Karpenter NodePool + EC2NodeClass (which provisions worker nodes) and the server app"
 terraform apply -target=module.argocd_apps -auto-approve
 
 # Step 5: Update kubectl config

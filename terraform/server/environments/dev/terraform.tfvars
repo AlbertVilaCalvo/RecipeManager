@@ -53,9 +53,6 @@ lb_controller_chart_version = "1.17.1"
 # ExternalDNS
 external_dns_chart_version = "1.20.0"
 
-# External Secrets Operator
-external_secrets_chart_version = "2.0.1"
-
 # Karpenter Controller
 karpenter_chart_version = "1.8.3"
 

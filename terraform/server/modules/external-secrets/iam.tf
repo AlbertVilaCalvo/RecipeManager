@@ -1,3 +1,8 @@
+locals {
+  service_account_name = "external-secrets"
+  namespace            = "external-secrets"
+}
+
 resource "aws_iam_role" "external_secrets" {
   name = "${var.app_name}-external-secrets-role-${var.environment}"
 
