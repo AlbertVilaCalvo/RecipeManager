@@ -22,9 +22,8 @@ locals {
   cluster_name = "${var.app_name}-eks-cluster-${var.environment}"
   namespace    = "recipe-manager"
 
-  lb_controller_chart_path    = fileexists("${path.module}/.charts/aws-load-balancer-controller-${var.lb_controller_chart_version}.tgz") ? "${path.module}/.charts/aws-load-balancer-controller-${var.lb_controller_chart_version}.tgz" : null
-  external_dns_chart_path     = fileexists("${path.module}/.charts/external-dns-${var.external_dns_chart_version}.tgz") ? "${path.module}/.charts/external-dns-${var.external_dns_chart_version}.tgz" : null
-  external_secrets_chart_path = fileexists("${path.module}/.charts/external-secrets-${var.external_secrets_chart_version}.tgz") ? "${path.module}/.charts/external-secrets-${var.external_secrets_chart_version}.tgz" : null
+  lb_controller_chart_path = fileexists("${path.module}/.charts/aws-load-balancer-controller-${var.lb_controller_chart_version}.tgz") ? "${path.module}/.charts/aws-load-balancer-controller-${var.lb_controller_chart_version}.tgz" : null
+  external_dns_chart_path  = fileexists("${path.module}/.charts/external-dns-${var.external_dns_chart_version}.tgz") ? "${path.module}/.charts/external-dns-${var.external_dns_chart_version}.tgz" : null
 }
 
 # Infrastructure
@@ -175,9 +174,6 @@ module "external_secrets" {
 
   app_name    = var.app_name
   environment = var.environment
-
-  chart_version = var.external_secrets_chart_version
-  chart_path    = local.external_secrets_chart_path
 
   cluster_name = module.eks.cluster_name
 
