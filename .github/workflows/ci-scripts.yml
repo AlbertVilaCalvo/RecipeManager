@@ -1,0 +1,51 @@
+name: CI - Scripts
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/**
+      - .github/workflows/ci-scripts.yml
+  push:
+    branches:
+      - main
+    paths:
+      - scripts/**
+      - .github/workflows/ci-scripts.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  shfmt:
+    name: shfmt (formatting)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install shfmt
+        run: |
+          curl -sSL "https://github.com/mvdan/sh/releases/download/v3.10.0/shfmt_v3.10.0_linux_amd64" \
+            -o /usr/local/bin/shfmt
+          chmod +x /usr/local/bin/shfmt
+          shfmt --version
+      - name: Check shell script formatting
+        # -l: list files that differ; exits 1 if any file is not formatted
+        run: shfmt -l -i 2 -ci -bn scripts/
+
+  shellcheck:
+    name: ShellCheck (linting)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Run ShellCheck
+        run: find scripts -name '*.sh' -exec shellcheck {} +

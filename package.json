@@ -4,8 +4,8 @@
   "description": "Recipe manager application",
   "private": true,
   "scripts": {
-    "format": "npx prettier --write .",
-    "format:check": "npx prettier --check .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Albert",

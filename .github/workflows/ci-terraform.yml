@@ -1,0 +1,100 @@
+name: CI - Terraform
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - terraform/**
+      - .tflint.hcl
+      - .github/workflows/ci-terraform.yml
+  push:
+    branches:
+      - main
+    paths:
+      - terraform/**
+      - .tflint.hcl
+      - .github/workflows/ci-terraform.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: Terraform fmt
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v3
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+  validate:
+    name: Terraform validate (${{ matrix.dir }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        dir:
+          - bootstrap/environments/all
+          - bootstrap/environments/dev
+          - bootstrap/environments/prod
+          - server/environments/dev
+          - server/environments/prod
+          - web/environments/dev
+          - web/environments/prod
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v3
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: terraform/${{ matrix.dir }}/.terraform
+          key: terraform-providers-${{ matrix.dir }}-${{ hashFiles(format('terraform/{0}/.terraform.lock.hcl', matrix.dir)) }}
+          restore-keys: |
+            terraform-providers-${{ matrix.dir }}-
+      - name: Terraform init
+        # -backend=false: skip remote state initialization — no AWS credentials needed
+        run: terraform init -backend=false
+        working-directory: terraform/${{ matrix.dir }}
+      - name: Terraform validate
+        run: terraform validate
+        working-directory: terraform/${{ matrix.dir }}
+
+  tflint:
+    name: TFLint
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.52.0
+      - name: Cache TFLint plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: tflint-plugins-${{ hashFiles('.tflint.hcl') }}
+      - name: Init TFLint (download plugins)
+        run: tflint --init
+      - name: Run TFLint
+        run: tflint --recursive
+        working-directory: terraform
+
+  checkov:
+    name: Checkov (security scan)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Checkov
+        run: pip install checkov==3.2.0
+      - name: Run Checkov
+        run: checkov --directory terraform --quiet --framework terraform

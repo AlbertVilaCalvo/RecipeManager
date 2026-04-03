@@ -1,0 +1,98 @@
+name: CI - Server
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - server/**
+      - .github/workflows/ci-server.yml
+  push:
+    branches:
+      - main
+    paths:
+      - server/**
+      - .github/workflows/ci-server.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: server
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+      - name: Compile TypeScript
+        run: npm run build
+
+  eslint:
+    name: ESLint
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+      - name: Run ESLint
+        run: npm run lint
+
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+      - name: Run tests
+        run: npm test
+
+  hadolint:
+    name: Hadolint (Dockerfile lint)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: server/Dockerfile
+
+  trivy:
+    name: Trivy (dependency scan)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: 'server/'
+          exit-code: '0'
+          format: 'table'

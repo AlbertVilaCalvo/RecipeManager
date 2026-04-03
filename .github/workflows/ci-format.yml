@@ -1,0 +1,58 @@
+name: CI - Formatting
+
+# Runs on all paths (prettier and yamllint are quick, not worth path-filtering)
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  prettier:
+    name: Prettier
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+      - name: Check formatting with Prettier
+        run: npm run format:check
+
+  yamllint:
+    name: YAMLLint
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install yamllint
+        run: pip install yamllint
+      - name: Run yamllint
+        run: yamllint -c .yamllint.yml kubernetes/ .github/workflows/
+
+  actionlint:
+    name: actionlint (workflow syntax)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install actionlint
+        run: |
+          bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -version
+      - name: Run actionlint
+        run: ./actionlint
