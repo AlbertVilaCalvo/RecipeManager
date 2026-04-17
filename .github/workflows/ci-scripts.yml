@@ -1,0 +1,47 @@
+name: CI - Scripts
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/**
+      - pre-commit
+      - .github/actions/install-shfmt/**
+      - .github/actions/install-shellcheck/**
+      - .github/workflows/ci-scripts.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  shfmt:
+    name: shfmt (formatting)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install shfmt
+        uses: ./.github/actions/install-shfmt
+      - name: Check shell script formatting
+        # -l: list files that differ; exits 1 if any file is not formatted
+        run: shfmt -l -i 2 -ci -bn scripts/ pre-commit
+
+  shellcheck:
+    name: ShellCheck (linting)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install ShellCheck
+        uses: ./.github/actions/install-shellcheck
+      - name: Run ShellCheck
+        run: |
+          shellcheck --version
+          find scripts -type f -name '*.sh' -exec shellcheck {} +
+          shellcheck pre-commit

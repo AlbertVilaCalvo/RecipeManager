@@ -1,0 +1,79 @@
+name: CI - Formatting
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.js'
+      - '**/*.jsx'
+      - '**/*.json'
+      - '**/*.md'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - '**/*.html'
+      - '**/*.css'
+      - .prettierrc.json
+      - .prettierignore
+      - .yamllint.yml
+      - .github/workflows/ci-format.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      yaml: ${{ steps.filter.outputs.yaml }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            yaml:
+              - '**/*.yml'
+              - '**/*.yaml'
+              - .yamllint.yml
+
+  prettier:
+    name: Prettier
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+      - name: Check formatting with Prettier
+        run: npm run format:check
+
+  yamllint:
+    name: YAMLLint
+    needs: changes
+    if: needs.changes.outputs.yaml == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install yamllint
+        run: pip install yamllint==1.38.0
+      - name: Run yamllint
+        run: yamllint -c .yamllint.yml .

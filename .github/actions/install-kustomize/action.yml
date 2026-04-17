@@ -1,0 +1,19 @@
+name: Install Kustomize
+description: Download and install Kustomize to /usr/local/bin
+
+runs:
+  using: composite
+  steps:
+    - name: Install Kustomize
+      shell: bash
+      env:
+        KUSTOMIZE_VERSION: '5.8.1'
+        # SHA256 from https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.1/checksums.txt
+        KUSTOMIZE_SHA256: '029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d'
+      run: |
+        curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+          -o kustomize.tar.gz
+        echo "${KUSTOMIZE_SHA256}  kustomize.tar.gz" | sha256sum --check
+        tar -xzf kustomize.tar.gz -C /usr/local/bin kustomize
+        rm kustomize.tar.gz
+        kustomize version

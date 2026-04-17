@@ -1,0 +1,18 @@
+name: Install KubeLinter
+description: Download and install KubeLinter to /usr/local/bin
+
+runs:
+  using: composite
+  steps:
+    - name: Install KubeLinter
+      shell: bash
+      env:
+        KUBE_LINTER_VERSION: '0.7.2'
+        KUBE_LINTER_SHA256: '8a0f8ba6c28910acd4886cc4d501ed32f3d404a53ac5e72c45a0dd893fcadb03'
+      run: |
+        curl -sSL "https://github.com/stackrox/kube-linter/releases/download/v${KUBE_LINTER_VERSION}/kube-linter-linux.tar.gz" \
+          -o kube-linter.tar.gz
+        echo "${KUBE_LINTER_SHA256}  kube-linter.tar.gz" | sha256sum --check
+        tar -xzf kube-linter.tar.gz -C /usr/local/bin kube-linter
+        rm kube-linter.tar.gz
+        kube-linter version

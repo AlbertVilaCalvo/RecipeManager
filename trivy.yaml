@@ -1,0 +1,19 @@
+# https://trivy.dev/docs/latest/guide/references/configuration/config-file/
+
+format: table
+
+# Only report HIGH and CRITICAL findings.
+severity:
+  - HIGH
+  - CRITICAL
+
+# Only report vulnerabilities that have a known fix.
+ignore-unfixed: true
+
+# Jobs can use 'continue-on-error: true' to avoid blocking the workflow.
+exit-code: 1
+
+scan:
+  skip-dirs:
+    - terraform/server/environments/dev/.charts
+    - terraform/server/environments/prod/.charts

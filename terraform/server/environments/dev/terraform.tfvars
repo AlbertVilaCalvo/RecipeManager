@@ -18,7 +18,7 @@ availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
 single_nat_gateway = true # Cost savings for dev
 
 # EKS
-kubernetes_version     = "1.34"
+kubernetes_version     = "1.34" # Update version in ci-kubernetes.yml too when changing this by running sync-k8s-with-tfvars.sh
 endpoint_public_access = true
 public_access_cidrs    = ["0.0.0.0/0"]
 # Order matters: AWS provisions instances in the exact order listed

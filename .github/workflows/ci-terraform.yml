@@ -1,0 +1,98 @@
+name: CI - Terraform
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - terraform/**
+      - .tflint.hcl
+      - .github/workflows/ci-terraform.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: Terraform fmt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive terraform/
+
+  validate:
+    name: Terraform validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugin-cache
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+      - name: Create plugin cache directory
+        run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
+      - name: Cache Terraform providers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: terraform-providers-${{ hashFiles('terraform/**/.terraform.lock.hcl') }}
+          restore-keys: terraform-providers-
+      - name: Terraform init and validate all environments
+        run: |
+          for dir in \
+            bootstrap/environments/all \
+            bootstrap/environments/dev \
+            bootstrap/environments/prod \
+            server/environments/dev \
+            server/environments/prod \
+            web/environments/dev \
+            web/environments/prod; do
+            echo "::group::terraform/$dir"
+            terraform -chdir="terraform/$dir" init -backend=false
+            terraform -chdir="terraform/$dir" validate
+            echo "::endgroup::"
+          done
+
+  tflint:
+    name: TFLint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: terraform-linters/setup-tflint@b480b8fcdaa6f2c577f8e4fa799e89e756bb7c93 # v6.2.2
+        with:
+          tflint_version: v0.61.0
+          cache: true
+      - name: Init TFLint (download plugins)
+        run: tflint --init
+        # https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/plugins.md#avoiding-rate-limiting
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Run TFLint
+        # We need to specify the .tflint.hcl location with --config because when using --chdir it looks for the file in
+        # the --chdir directory, see https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/working-directory.md
+        run: tflint --recursive --chdir=terraform --config="$(realpath .tflint.hcl)"
+
+  # We do not run 'trivy config' in terraform/ since it is redundant with TFLint and checkov.
+
+  # https://www.checkov.io/5.Policy%20Index/terraform.html
+  checkov:
+    name: Checkov (misconfiguration and security scan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install Checkov
+        run: pip install checkov==3.2.0
+      - name: Run Checkov
+        run: checkov --directory terraform --quiet --framework terraform

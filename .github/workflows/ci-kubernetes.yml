@@ -1,0 +1,123 @@
+name: CI - Kubernetes
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - kubernetes/**
+      - trivy.yaml
+      - .github/actions/install-kustomize/**
+      - .github/actions/install-kubeconform/**
+      - .github/actions/install-kube-linter/**
+      - .github/workflows/ci-kubernetes.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Must be a full version (x.y.z, not x.y), otherwise kubeconform throws an error.
+  # Should match the value of kubernetes_version in terraform/server/environments/[env]/terraform.tfvars.
+  # Run scripts/server/sync-k8s-with-tfvars.sh to set this value to match terraform.tfvars.
+  KUBERNETES_VERSION: '1.34.0'
+  # Pin schema to a commit to avoid failures if upstream main changes.
+  CRDS_CATALOG_SCHEMA_URL: 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/2f3e984448b8c86a551255f31b10e82596fe1a1e/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
+jobs:
+  kubeconform:
+    name: Kubeconform (schema validation)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install Kustomize
+        uses: ./.github/actions/install-kustomize
+      - name: Install Kubeconform
+        uses: ./.github/actions/install-kubeconform
+      - name: Validate server manifests (dev)
+        # -strict: fail on unknown or duplicated fields in known schemas
+        # -summary: print a summary at the end
+        # The CRDs-catalog is used to validate CRDs (ExternalSecret and SecretStore)
+        run: |
+          kustomize build kubernetes/server/overlays/dev \
+            | kubeconform \
+              -strict \
+              -summary \
+              -kubernetes-version "$KUBERNETES_VERSION" \
+              -schema-location default \
+              -schema-location "$CRDS_CATALOG_SCHEMA_URL" \
+              -
+      - name: Validate server manifests (prod)
+        run: |
+          kustomize build kubernetes/server/overlays/prod \
+            | kubeconform \
+              -strict \
+              -summary \
+              -kubernetes-version "$KUBERNETES_VERSION" \
+              -schema-location default \
+              -schema-location "$CRDS_CATALOG_SCHEMA_URL" \
+              -
+      - name: Validate CRD manifests (argocd-apps, karpenter-nodepool)
+        run: |
+          kubeconform \
+            -strict \
+            -summary \
+            -kubernetes-version "$KUBERNETES_VERSION" \
+            -schema-location default \
+            -schema-location "$CRDS_CATALOG_SCHEMA_URL" \
+            kubernetes/argocd-apps/ \
+            kubernetes/karpenter-nodepool/
+
+  kube_linter:
+    name: KubeLinter (best practices and security checks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # We need to render the manifests before linting, otherwise KubeLinter reports errors in incomplete
+      # manifests (for example, 'object has no selector specified' in deployment_patch.yaml).
+      - name: Install Kustomize
+        uses: ./.github/actions/install-kustomize
+      - name: Install KubeLinter
+        uses: ./.github/actions/install-kube-linter
+      # We do not run KubeLinter in folders that only contain CRDs (Application, NodePool, EC2NodeClass,
+      # etc.) since it simply reports 'Warning: no valid objects found'.
+      - name: Run KubeLinter - server (dev)
+        run: kustomize build kubernetes/server/overlays/dev | kube-linter lint -
+      - name: Run KubeLinter - server (prod)
+        if: always()
+        run: kustomize build kubernetes/server/overlays/prod | kube-linter lint -
+
+  # Checkov also has Kubernetes checks, see https://www.checkov.io/5.Policy%20Index/kubernetes.html
+
+  # Scans Kubernetes manifests for security misconfigurations: privileged containers,
+  # missing securityContext, host namespace access, etc.
+  # This is complementary to kubeconform (schema validation) and KubeLinter (best practices).
+  # Not run on argocd-apps/ or karpenter-nodepool/ since those only contain CRD instances
+  # (Application, NodePool, EC2NodeClass) with no security-sensitive workload config.
+  trivy_config:
+    name: Trivy config (security scan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install Kustomize
+        uses: ./.github/actions/install-kustomize
+      - name: Render manifests
+        run: |
+          mkdir -p rendered
+          kustomize build kubernetes/server/overlays/dev > rendered/server-dev.yaml
+          kustomize build kubernetes/server/overlays/prod > rendered/server-prod.yaml
+      - name: Run Trivy config scanner - server manifests
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: 'config'
+          scan-ref: 'rendered'
+          trivy-config: trivy.yaml

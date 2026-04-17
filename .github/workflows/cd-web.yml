@@ -1,0 +1,68 @@
+name: CD - Web
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - web/**
+      - .github/actions/deploy-web/**
+      - .github/workflows/cd-web.yml
+  workflow_dispatch:
+
+# Allow only one concurrent deployment at a time.
+# Unlike CI, we don't cancel in-progress runs to avoid leaving deployments in a partial state.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_dev:
+    name: Deploy React web app to the dev environment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: dev
+    # Permissions needed to interact with GitHub's OIDC Token endpoint
+    # https://docs.github.com/en/actions/reference/security/oidc#workflow-permissions-for-the-requesting-the-oidc-token
+    permissions:
+      id-token: write # Allows the job to request the JWT token from GitHub's OIDC provider
+      contents: read # Allows the action to clone your repository code. Required for actions/checkout
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Deploy web app
+        uses: ./.github/actions/deploy-web
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_OIDC_ROLE_ARN_WEB }}
+          role-session-name: 'GitHubActions-web-deploy-dev'
+          s3-bucket: ${{ vars.WEB_S3_BUCKET }}
+          cloudfront-distribution-id: ${{ vars.WEB_CLOUDFRONT_DISTRIBUTION_ID }}
+          vite-api-base-url: ${{ vars.VITE_API_BASE_URL }}
+
+  # Deployment to production is protected by environment protection rules.
+  # Must configure required reviewers at GitHub Settings → Environments → prod → Required reviewers.
+  deploy_prod:
+    name: Deploy React web app to the prod environment
+    needs: deploy_dev
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: prod
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Deploy web app
+        uses: ./.github/actions/deploy-web
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_OIDC_ROLE_ARN_WEB }}
+          role-session-name: 'GitHubActions-web-deploy-prod'
+          s3-bucket: ${{ vars.WEB_S3_BUCKET }}
+          cloudfront-distribution-id: ${{ vars.WEB_CLOUDFRONT_DISTRIBUTION_ID }}
+          vite-api-base-url: ${{ vars.VITE_API_BASE_URL }}

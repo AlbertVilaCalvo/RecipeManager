@@ -1,0 +1,172 @@
+name: CI - Server
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - server/**
+      - trivy.yaml
+      - .github/workflows/ci-server.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: server
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      deps_or_scan_config: ${{ steps.filter.outputs.deps_or_scan_config }}
+      docker_image: ${{ steps.filter.outputs.docker_image }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            deps_or_scan_config:
+              - server/package.json
+              - server/package-lock.json
+              - trivy.yaml
+              - .github/workflows/ci-server.yml
+            docker_image:
+              - server/Dockerfile
+              - server/package.json
+              - server/package-lock.json
+              - trivy.yaml
+              - .github/workflows/ci-server.yml
+
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+      - name: Compile TypeScript
+        run: npm run build
+
+  eslint:
+    name: ESLint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+      - name: Run ESLint
+        run: npm run lint
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+      - name: Run tests
+        run: npm test
+
+  # Alternatively, we could use Dockle. Seems more feature rich, see
+  # https://github.com/goodwithtech/dockle#checkpoints-comparison
+  # We could also try Checkov: https://www.checkov.io/5.Policy%20Index/dockerfile.html
+  hadolint:
+    name: Hadolint (Dockerfile lint)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+        with:
+          dockerfile: server/Dockerfile
+
+  # npm audit and trivy fs are redundant, we may remove one of them
+  npm_audit:
+    name: npm audit (dependency scan)
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.deps_or_scan_config == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+
+  trivy_fs:
+    name: Trivy (dependency scan)
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.deps_or_scan_config == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: 'server/'
+          scanners: 'vuln,secret,misconfig'
+          trivy-config: trivy.yaml
+
+  # Scans OS-level packages (Alpine apk) in the base image — something
+  # 'trivy fs' cannot cover because it only looks at the package-lock.json.
+  trivy_image:
+    name: Trivy (Docker image security scan)
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.docker_image == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build Docker image
+        # The platform flag is omitted here (defaults to the runner's native amd64)
+        # since we only need the image locally for scanning, not for deployment.
+        run: docker build -t recipe-manager-server:ci-scan .
+      - name: Run Trivy image scanner
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'image'
+          scan-ref: 'recipe-manager-server:ci-scan'
+          scanners: 'vuln'
+          trivy-config: trivy.yaml

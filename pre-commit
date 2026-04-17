@@ -1,12 +1,15 @@
 #!/bin/bash
 
-# Runs Prettier on .ts, .tsx, .js, .jsx, .md, .yml, .yaml, .css and .json files, and also runs ESLint and tsc on .ts,
+# Runs Prettier on .ts, .tsx, .js, .jsx, .md, .yml, .yaml, .html, .css and .json files, and also runs ESLint and tsc on .ts,
 # .tsx, .js, .jsx files. Prettier and ESLint only check the committed files, whereas tsc checks all project files, since
 # it's not possible to run tsc on specific files while obeying the tsconfig.json options (see
 # https://github.com/microsoft/TypeScript/issues/27379 and https://www.npmjs.com/package/tsc-files).
-# Runs `terraform fmt -check` and `terraform validate` on .tf and .tfvars files.
+# Runs `terraform fmt -check`, `terraform validate` and TFLint (if installed) on .tf and .tfvars files.
 # Runs ShellCheck on .sh files if ShellCheck is installed.
-# This hook always commits, even if errors are found. And it does not modify the files (ie it does not do `prettier
+# Runs YAMLLint on .yml/.yaml files if yamllint is installed.
+# Runs actionlint on GitHub Actions workflow files (.github/workflows/) if actionlint is installed.
+
+# This hook always commits, even if errors are found. And it does not modify the files (i.e. it does not do `prettier
 # write` or `terraform fmt`), it only checks if there is any issue and reports it.
 # Inspired by https://prettier.io/docs/precommit.html#option-5-shell-script
 
@@ -39,6 +42,8 @@ get_staged_files() {
   CODE_FILES_WEB=$(echo "$ALL_CODE_FILES" | awk '/^web\//' | sed 's|^web/||')
   TERRAFORM_FILES=$(echo "$ALL_FILES" | awk '/\.tf$|\.tfvars$/')
   SHELL_FILES=$(echo "$ALL_FILES" | awk '/\.sh$|^pre-commit$/')
+  YAML_FILES=$(echo "$ALL_FILES" | awk '/\.yml$|\.yaml$/')
+  WORKFLOW_FILES=$(echo "$ALL_FILES" | awk '/^\.github\/workflows\//')
 }
 
 print_title() {
@@ -77,7 +82,7 @@ if [ ! -z "$CODE_FILES_SERVER" ]; then
   print_result "ESLint server"
 
   print_title "tsc server"
-  npx tsc --noEmit
+  npm run typecheck
   print_result "tsc server"
 
   cd ..
@@ -95,7 +100,7 @@ if [ ! -z "$CODE_FILES_WEB" ]; then
   print_result "ESLint web"
 
   print_title "tsc web"
-  npx tsc --noEmit
+  npm run typecheck
   print_result "tsc web"
 
   cd ..
@@ -118,6 +123,24 @@ if [ ! -z "$TERRAFORM_FILES" ]; then
     (cd "$dir" && terraform validate)
     print_result "Terraform validate ($dir)"
   done
+fi
+
+# TFLint
+
+if [ ! -z "$TERRAFORM_FILES" ]; then
+  print_title "TFLint"
+  if command -v tflint >/dev/null 2>&1; then
+    AWS_PLUGIN_VERSION=$(grep -A5 'plugin "aws"' .tflint.hcl | grep -m1 'version' | sed 's/.*"\(.*\)".*/\1/')
+    AWS_PLUGIN_DIR="${HOME}/.tflint.d/plugins/github.com/terraform-linters/tflint-ruleset-aws/${AWS_PLUGIN_VERSION}"
+    if [ ! -d "$AWS_PLUGIN_DIR" ]; then
+      echo "TFLint aws plugin not found. Running tflint --init to install plugins..."
+      tflint --init
+    fi
+    tflint --recursive --chdir=terraform --config="$(realpath .tflint.hcl)"
+    print_result "TFLint"
+  else
+    echo -e "${YELLOW}tflint not found; skipping TFLint. Install tflint to enable.${NO_COLOR}"
+  fi
 fi
 
 # ShellCheck
@@ -173,6 +196,34 @@ if [ ! -z "$SHELL_FILES" ]; then
     print_result "shfmt"
   else
     echo -e "${YELLOW}shfmt not found; skipping shell script formatting check. Install shfmt to enable.${NO_COLOR}"
+  fi
+fi
+
+# YAMLLint
+
+if [ ! -z "$YAML_FILES" ]; then
+  echo -e "📁 Files yaml\n\n$YAML_FILES"
+
+  print_title "YAMLLint"
+  if command -v yamllint >/dev/null 2>&1; then
+    echo "$YAML_FILES" | xargs yamllint -c .yamllint.yml
+    print_result "YAMLLint"
+  else
+    echo -e "${YELLOW}yamllint not found; skipping YAML linting. Install yamllint to enable.${NO_COLOR}"
+  fi
+fi
+
+# Actionlint
+
+if [ ! -z "$WORKFLOW_FILES" ]; then
+  echo -e "📁 Files workflows\n\n$WORKFLOW_FILES"
+
+  print_title "Actionlint"
+  if command -v actionlint >/dev/null 2>&1; then
+    echo "$WORKFLOW_FILES" | xargs actionlint
+    print_result "Actionlint"
+  else
+    echo -e "${YELLOW}actionlint not found; skipping workflow syntax check. Install actionlint to enable.${NO_COLOR}"
   fi
 fi
 

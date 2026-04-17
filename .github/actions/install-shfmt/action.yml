@@ -1,0 +1,18 @@
+name: Install shfmt
+description: Download and install shfmt to /usr/local/bin
+
+runs:
+  using: composite
+  steps:
+    - name: Install shfmt
+      shell: bash
+      env:
+        SHFMT_VERSION: '3.13.1'
+        SHFMT_SHA256: 'fb096c5d1ac6beabbdbaa2874d025badb03ee07929f0c9ff67563ce8c75398b1'
+      run: |
+        curl -sSL "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" \
+          -o shfmt
+        echo "${SHFMT_SHA256}  shfmt" | sha256sum --check
+        install -m 0755 shfmt /usr/local/bin/shfmt
+        rm shfmt
+        shfmt --version

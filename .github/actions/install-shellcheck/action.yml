@@ -1,0 +1,21 @@
+name: Install ShellCheck
+description: Download and install ShellCheck to /usr/local/bin
+
+runs:
+  using: composite
+  steps:
+    - name: Install ShellCheck
+      shell: bash
+      env:
+        SHELLCHECK_VERSION: '0.11.0'
+        SHELLCHECK_SHA256: '8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198'
+      run: |
+        curl -sSL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+          -o shellcheck.tar.xz
+        echo "${SHELLCHECK_SHA256}  shellcheck.tar.xz" | sha256sum --check
+        tar -xJf shellcheck.tar.xz --strip-components=1 -C /usr/local/bin "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+        rm shellcheck.tar.xz
+        # Ubuntu runners have an older version of ShellCheck in their PATH so we clear the
+        # shell's hash table to ensure we use the newly installed binary in /usr/local/bin
+        hash -r
+        shellcheck --version

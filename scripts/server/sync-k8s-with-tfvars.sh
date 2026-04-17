@@ -20,6 +20,7 @@ KUBERNETES_DIR="${PROJECT_ROOT}/kubernetes/server"
 KARPENTER_NODEPOOL_DIR="${PROJECT_ROOT}/kubernetes/karpenter-nodepool/${ENVIRONMENT}"
 ARGOCD_APPS_DIR="${PROJECT_ROOT}/kubernetes/argocd-apps/${ENVIRONMENT}"
 TERRAFORM_DIR="${PROJECT_ROOT}/terraform/server/environments/${ENVIRONMENT}"
+CI_KUBERNETES_WORKFLOW="${PROJECT_ROOT}/.github/workflows/ci-kubernetes.yml"
 
 if [[ -z "${ENVIRONMENT}" ]]; then
   log_error "Environment is required."
@@ -45,6 +46,7 @@ RDS_USERNAME=$(get_tfvars_value "master_username")
 APP_NAME=$(get_tfvars_value "app_name")
 GIT_REPO_URL=$(get_tfvars_value "git_repo_url")
 GIT_REVISION=$(get_tfvars_value "git_revision")
+KUBERNETES_VERSION=$(get_tfvars_value "kubernetes_version")
 
 CLUSTER_NAME="${APP_NAME}-eks-cluster-${ENVIRONMENT}"
 NODE_ROLE_NAME="${APP_NAME}-eks-node-role-${ENVIRONMENT}"
@@ -95,6 +97,17 @@ sed -i.bak \
   -e "s|kubernetes.io/cluster/.*: owned|kubernetes.io/cluster/${CLUSTER_NAME}: owned|g" \
   "${KARPENTER_NODEPOOL_DIR}/ec2nodeclass.yaml"
 
+# Update KUBERNETES_VERSION in ci-kubernetes.yml workflow.
+# Terraform uses major.minor (e.g. "1.34"), kubeconform requires major.minor.patch,
+# so we append ".0" if required.
+KUBECONFORM_VERSION="${KUBERNETES_VERSION}"
+if [[ "${KUBERNETES_VERSION}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+  KUBECONFORM_VERSION="${KUBERNETES_VERSION}.0"
+fi
+sed -i.bak \
+  -e "s|KUBERNETES_VERSION: '.*'|KUBERNETES_VERSION: '${KUBECONFORM_VERSION}'|g" \
+  "${CI_KUBERNETES_WORKFLOW}"
+
 # Cleanup sed backups
 rm -f "${OVERLAY_DIR}/ingress_patch.yaml.bak" \
   "${OVERLAY_DIR}/configmap_patch.yaml.bak" \
@@ -102,6 +115,7 @@ rm -f "${OVERLAY_DIR}/ingress_patch.yaml.bak" \
   "${BASE_DIR}/secret-store.yaml.bak" \
   "${ARGOCD_APPS_DIR}"/server-app.yaml.bak \
   "${ARGOCD_APPS_DIR}"/karpenter-nodepool-app.yaml.bak \
-  "${KARPENTER_NODEPOOL_DIR}"/ec2nodeclass.yaml.bak
+  "${KARPENTER_NODEPOOL_DIR}"/ec2nodeclass.yaml.bak \
+  "${CI_KUBERNETES_WORKFLOW}.bak"
 
 log_info "Manifest synchronization complete."

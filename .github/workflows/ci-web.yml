@@ -1,0 +1,130 @@
+name: CI - Web
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - web/**
+      - trivy.yaml
+      - .github/workflows/ci-web.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: web
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      deps_or_scan_config: ${{ steps.filter.outputs.deps_or_scan_config }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            deps_or_scan_config:
+              - web/package.json
+              - web/package-lock.json
+              - trivy.yaml
+              - .github/workflows/ci-web.yml
+
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+      - name: Build React app
+        run: npm run build
+
+  eslint:
+    name: ESLint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+      - name: Run ESLint
+        run: npm run lint
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+        # On GitHub runners CI=true is set, so 'npm test' runs once (not in watch mode).
+        # See https://vitest.dev/guide/cli.html#vitest
+      - name: Run tests
+        run: npm test
+
+  # npm audit and trivy fs are redundant, we may remove one of them
+  npm_audit:
+    name: npm audit (dependency scan)
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.deps_or_scan_config == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+
+  trivy_fs:
+    name: Trivy (dependency scan)
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.deps_or_scan_config == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: 'web/'
+          scanners: 'vuln,secret,misconfig'
+          trivy-config: trivy.yaml

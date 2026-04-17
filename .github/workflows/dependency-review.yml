@@ -1,0 +1,81 @@
+name: Dependency Review (scheduled)
+# We also run these checks in ci-server.yml and ci-web.yml when dependencies change.
+# This workflow runs on a schedule to catch newly disclosed vulnerabilities over time.
+
+on:
+  schedule:
+    # Every Monday at 04:00 UTC.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit-server:
+    name: npm audit - server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+      - name: Install dependencies
+        working-directory: server
+        run: npm ci --no-fund --no-audit
+      - name: Run npm audit
+        working-directory: server
+        run: npm audit --audit-level=high
+
+  npm-audit-web:
+    name: npm audit - web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'web/package-lock.json'
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci --no-fund --no-audit
+      - name: Run npm audit
+        working-directory: web
+        run: npm audit --audit-level=high
+
+  trivy-fs-server:
+    name: Trivy fs - server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: 'server/'
+          scanners: 'vuln,secret,misconfig'
+          trivy-config: trivy.yaml
+
+  trivy-fs-web:
+    name: Trivy fs - web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: 'web/'
+          scanners: 'vuln,secret,misconfig'
+          trivy-config: trivy.yaml

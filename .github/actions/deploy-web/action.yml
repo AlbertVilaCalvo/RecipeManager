@@ -1,0 +1,62 @@
+name: Deploy Web App
+description: Build and deploy the React web app to S3 + CloudFront
+
+inputs:
+  aws-region:
+    description: AWS region
+    required: true
+  role-to-assume:
+    description: ARN of the IAM role to assume via OIDC
+    required: true
+  role-session-name:
+    description: Session name for the assumed role
+    required: true
+  s3-bucket:
+    description: S3 bucket to deploy to
+    required: true
+  cloudfront-distribution-id:
+    description: CloudFront distribution ID to invalidate
+    required: true
+  vite-api-base-url:
+    description: Value for VITE_API_BASE_URL environment variable to be used during the React build
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      with:
+        node-version: 24
+        cache: 'npm'
+        cache-dependency-path: 'web/package-lock.json'
+    - name: Install dependencies
+      shell: bash
+      working-directory: web
+      run: npm ci --no-fund --no-audit
+    - name: Build React web app
+      # TODO build React in production mode
+      # env:
+      #   NODE_ENV: production
+      shell: bash
+      working-directory: web
+      env:
+        VITE_API_BASE_URL: ${{ inputs.vite-api-base-url }}
+      run: npm run build
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+      with:
+        aws-region: ${{ inputs.aws-region }}
+        role-to-assume: ${{ inputs.role-to-assume }}
+        role-session-name: ${{ inputs.role-session-name }}
+        # We could also do:
+        # role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ vars.AWS_DEPLOY_ROLE }}
+    - name: Upload build folder files to S3
+      shell: bash
+      working-directory: web
+      run: aws s3 sync build s3://${{ inputs.s3-bucket }} --delete
+    - name: Invalidate CloudFront distribution
+      shell: bash
+      run: |
+        aws cloudfront create-invalidation \
+          --distribution-id ${{ inputs.cloudfront-distribution-id }} \
+          --paths '/*'
